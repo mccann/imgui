@@ -434,7 +434,7 @@ void ImDrawList::_ResetForNewFrame()
     _Path.resize(0);
     _Splitter.Clear();
     CmdBuffer.push_back(ImDrawCmd());
-    _FringeScale = 1.0f;
+    _FringeScale = 1.0f/ImGui::GetIO().DisplayFramebufferScale.y;
 }
 
 void ImDrawList::_ClearFreeMemory()
