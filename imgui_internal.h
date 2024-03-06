@@ -1756,7 +1756,7 @@ struct IMGUI_API ImGuiMultiSelectTempData
     ImS8                    LoopRequestSetAll;  // -1: no operation, 0: clear all, 1: select all.
     bool                    IsEndIO;            // Set when switching IO from BeginMultiSelect() to EndMultiSelect() state.
     bool                    IsFocused;          // Set if currently focusing the selection scope (any item of the selection). May be used if you have custom shortcut associated to selection.
-    bool                    IsSetRange;         // Set by BeginMultiSelect() when using Shift+Navigation. Because scrolling may be affected we can't afford a frame of lag with Shift+Navigation.
+    bool                    IsKeyboardSetRange; // Set by BeginMultiSelect() when using Shift+Navigation. Because scrolling may be affected we can't afford a frame of lag with Shift+Navigation.
     bool                    NavIdPassedBy;
     bool                    RangeSrcPassedBy;   // Set by the item that matches RangeSrcItem.
     bool                    RangeDstPassedBy;   // Set by the item that matches NavJustMovedToId when IsSetRange is set.
