@@ -7868,6 +7868,7 @@ void ImGui::SetCurrentFont(ImFont* font)
     g.DrawListSharedData.FontScale = g.FontScale;
     g.DrawListSharedData.ShadowRectIds = &atlas->ShadowRectIds[0];
     g.DrawListSharedData.ShadowRectUvs = &atlas->ShadowRectUvs[0];
+    g.DrawListSharedData.InShdwRectUvs = &atlas->InShdwRectUvs[0];
 }
 
 // Use ImDrawList::_SetTextureID(), making our shared g.FontStack[] authorative against window-local ImDrawList.

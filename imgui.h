@@ -3177,7 +3177,7 @@ struct ImDrawList
     //      Typically used by: large, infrequent objects, transparent objects if exact blending/color matter.
     // - FIXME-SHADOWS: 'offset' + ImDrawFlags_ShadowCutOutShapeBackground are not currently supported together with AddShadowCircle(), AddShadowConvexPoly(), AddShadowNGon().
     #define IMGUI_HAS_SHADOWS 1
-    IMGUI_API void  AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags = 0, float obj_rounding = 0.0f);
+    IMGUI_API void  AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags = 0, float obj_rounding = 0.0f, bool inner=false);
     IMGUI_API void  AddShadowCircle(const ImVec2& obj_center, float obj_radius, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags = 0, int obj_num_segments = 12);
     IMGUI_API void  AddShadowConvexPoly(const ImVec2* points, int points_count, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags = 0);
     IMGUI_API void  AddShadowNGon(const ImVec2& obj_center, float obj_radius, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags, int obj_num_segments);
@@ -3499,8 +3499,9 @@ struct ImFontAtlas
     int                         PackIdLines;        // Custom texture rectangle ID for baked anti-aliased lines
 
     // [Internal] Shadow data
-    int                         ShadowRectIds[2];   // IDs of rect for shadow textures
+    int                         ShadowRectIds[3];   // IDs of rect for shadow textures
     ImVec4                      ShadowRectUvs[10];  // UV coordinates for shadow textures, 9 for the rectangle shadows and the final entry for the convex shape shadows
+    ImVec4                      InShdwRectUvs[10];  // UV coordinates for inner shadow textures
     ImFontAtlasShadowTexConfig  ShadowTexConfig;    // Shadow texture baking config
 
     // [Obsolete]

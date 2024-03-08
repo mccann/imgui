@@ -2490,7 +2490,7 @@ static void AddSubtractedRect(ImDrawList* draw_list, const ImVec2& a_min, const 
     }
 }
 
-void ImDrawList::AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags, float obj_rounding)
+void ImDrawList::AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU32 shadow_col, float shadow_thickness, const ImVec2& shadow_offset, ImDrawFlags flags, float obj_rounding, bool inner)
 {
     if ((shadow_col & IM_COL32_A_MASK) == 0)
         return;
@@ -2499,7 +2499,7 @@ void ImDrawList::AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU
     int inner_rect_points_count = 0;
 
     // Generate a path describing the inner rectangle and copy it to our buffer
-    const bool is_filled = (flags & ImDrawFlags_ShadowCutOutShapeBackground) == 0;
+    const bool is_filled = (!inner) && ((flags & ImDrawFlags_ShadowCutOutShapeBackground) == 0);
     const bool is_rounded = (obj_rounding > 0.0f) && ((flags & ImDrawFlags_RoundCornersMask_) != ImDrawFlags_RoundCornersNone); // Do we have rounded corners?
     if (is_rounded && !is_filled)
     {
@@ -2511,8 +2511,17 @@ void ImDrawList::AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU
         _Path.Size = 0;
     }
 
-    if (is_filled)
+    if (is_filled) {
         PrimReserve(6 * 9, 4 * 9); // Reserve space for adding unclipped chunks
+    }
+    else if (inner) {
+        PrimReserve(6 * 8, 4 * 8); // Reserve space for adding unclipped chunks, minus inner
+    }
+
+    const ImVec4* rectUVs = inner ? _Data->InShdwRectUvs : _Data->ShadowRectUvs ;
+
+    auto obj_mid = (obj_min + obj_max) * 0.5f;
+
 
     // Draw the relevant chunks of the texture (the texture is split into a 3x3 grid)
     // FIXME-OPT: Might make sense to optimize/unroll for the fast paths (filled or not rounded)
@@ -2521,30 +2530,67 @@ void ImDrawList::AddShadowRect(const ImVec2& obj_min, const ImVec2& obj_max, ImU
         for (int y = 0; y < 3; y++)
         {
             const int uv_index = x + (y + y + y); // y*3 formatted so as to ensure the compiler avoids an actual multiply
-            const ImVec4 uvs = _Data->ShadowRectUvs[uv_index];
-
-            ImVec2 draw_min, draw_max;
-            switch (x)
-            {
-            case 0: draw_min.x = obj_min.x - shadow_thickness; draw_max.x = obj_min.x; break;
-            case 1: draw_min.x = obj_min.x; draw_max.x = obj_max.x; break;
-            case 2: draw_min.x = obj_max.x; draw_max.x = obj_max.x + shadow_thickness; break;
-            }
-            switch (y)
-            {
-            case 0: draw_min.y = obj_min.y - shadow_thickness; draw_max.y = obj_min.y; break;
-            case 1: draw_min.y = obj_min.y; draw_max.y = obj_max.y; break;
-            case 2: draw_min.y = obj_max.y; draw_max.y = obj_max.y + shadow_thickness; break;
-            }
+            const ImVec4 uvs    = rectUVs[uv_index];
 
             ImVec2 uv_min(uvs.x, uvs.y);
             ImVec2 uv_max(uvs.z, uvs.w);
-            if (is_filled)
-                PrimRectUV(draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, shadow_col); // No clipping path (draw entire shadow)
-            else if (is_rounded)
-                AddSubtractedRect(this, draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, inner_rect_points, inner_rect_points_count, shadow_col); // Complex path for rounded rectangles
-            else
-                AddSubtractedRect(this, draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, obj_min, obj_max, shadow_col); // Simple fast path for non-rounded rectangles
+            
+
+            ImVec2 draw_min, draw_max;
+            if (!inner) {
+                switch (x)
+                {
+                case 0: draw_min.x = obj_min.x - shadow_thickness; draw_max.x = obj_min.x; break;
+                case 1: draw_min.x = obj_min.x; draw_max.x = obj_max.x; break;
+                case 2: draw_min.x = obj_max.x; draw_max.x = obj_max.x + shadow_thickness; break;
+                }
+                switch (y)
+                {
+                case 0: draw_min.y = obj_min.y - shadow_thickness; draw_max.y = obj_min.y; break;
+                case 1: draw_min.y = obj_min.y; draw_max.y = obj_max.y; break;
+                case 2: draw_min.y = obj_max.y; draw_max.y = obj_max.y + shadow_thickness; break;
+                }
+
+                if (is_filled)
+                    PrimRectUV(draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, shadow_col); // No clipping path (draw entire shadow)
+                else if (is_rounded)
+                    AddSubtractedRect(this, draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, inner_rect_points, inner_rect_points_count, shadow_col); // Complex path for rounded rectangles
+                else
+                    AddSubtractedRect(this, draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, obj_min, obj_max, shadow_col); // Simple fast path for non-rounded rectangles
+
+            } else {
+                auto adjust = [](int section, float& draw_min, float& draw_max, float& uv_min, float& uv_max, float obj_min, float obj_mid, float obj_max, float shadow_thickness) {
+                        switch (section)
+                        {
+                        case 0: draw_min = obj_min; 
+                                draw_max = obj_min + shadow_thickness;
+                                if (obj_mid < draw_max) {
+                                    draw_max = obj_mid;
+                                    uv_max   = uv_min + (uv_max-uv_min)*(obj_mid - obj_min)/shadow_thickness;
+                                }
+                                break;
+                        case 1: draw_min = obj_min + shadow_thickness;  // let middle case go negative, will get filtered later
+                                draw_max = obj_max - shadow_thickness; 
+                                break;
+                        case 2: draw_min = obj_max - shadow_thickness; 
+                                draw_max = obj_max; 
+                                if (draw_min < obj_mid) {
+                                    draw_min = obj_mid;
+                                    uv_min   = uv_max - (uv_max-uv_min)*(obj_max - obj_mid)/shadow_thickness;
+                                }
+                                break;
+                        }
+                    };
+                adjust(x,draw_min.x,draw_max.x,uv_min.x,uv_max.x,obj_min.x,obj_mid.x,obj_max.x,shadow_thickness);
+                adjust(y,draw_min.y,draw_max.y,uv_min.y,uv_max.y,obj_min.y,obj_mid.y,obj_max.y,shadow_thickness);
+                if ((x != 1) || (y != 1)) {
+                    if (draw_min.x < draw_max.x && draw_min.y < draw_max.y) {
+                        PrimRectUV(draw_min + shadow_offset, draw_max + shadow_offset, uv_min, uv_max, shadow_col);
+                    } else {
+                        PrimUnreserve(6,4);
+                    }
+                }
+            }
         }
     }
 }
@@ -3223,7 +3269,7 @@ ImFontAtlas::ImFontAtlas()
     memset(this, 0, sizeof(*this));
     TexGlyphPadding = 1;
     PackIdMouseCursors = PackIdLines = -1;
-    ShadowRectIds[0] = ShadowRectIds[1] = -1;
+    ShadowRectIds[0] = ShadowRectIds[1] = ShadowRectIds[2] = -1;
     ShadowTexConfig.SetupDefaults();
 }
 
@@ -3253,7 +3299,7 @@ void    ImFontAtlas::ClearInputData()
     Sources.clear();
     CustomRects.clear();
     PackIdMouseCursors = PackIdLines = -1;
-    ShadowRectIds[0] = ShadowRectIds[1] = -1;
+    ShadowRectIds[0] = ShadowRectIds[1] = ShadowRectIds[2] = -1;
     // Important: we leave TexReady untouched
 }
 
@@ -4074,12 +4120,14 @@ static void ImFontAtlasBuildRegisterShadowCustomRects(ImFontAtlas* atlas)
 
     // ShadowRectIds[0] is the rectangle for rectangular shadows
     // ShadowRectIds[1] is the rectangle for convex shadows
+    // ShadowRectIds[2] is the rectangle for inner rectangular shadows
 
     // The actual size we want to reserve, including padding
     const ImFontAtlasShadowTexConfig* shadow_cfg = &atlas->ShadowTexConfig;
     const unsigned int effective_size = shadow_cfg->CalcRectTexSize() + shadow_cfg->GetRectTexPadding();
     atlas->ShadowRectIds[0] = atlas->AddCustomRectRegular(effective_size, effective_size);
     atlas->ShadowRectIds[1] = atlas->AddCustomRectRegular(shadow_cfg->CalcConvexTexWidth() + shadow_cfg->GetConvexTexPadding(), shadow_cfg->CalcConvexTexHeight() + shadow_cfg->GetConvexTexPadding());
+    atlas->ShadowRectIds[2] = atlas->AddCustomRectRegular(effective_size, effective_size);
 }
 
 // Calculates the signed distance from sample_pos to the nearest point on the rectangle defined by rect_min->rect_max
@@ -4142,13 +4190,14 @@ static void GaussianBlur(float* data, int size)
 static void ImFontAtlasBuildRenderShadowTexData(ImFontAtlas* atlas)
 {
     IM_ASSERT(atlas->TexPixelsAlpha8 != NULL || atlas->TexPixelsRGBA32 != NULL);
-    IM_ASSERT(atlas->ShadowRectIds[0] >= 0 && atlas->ShadowRectIds[1] >= 0);
+    IM_ASSERT(atlas->ShadowRectIds[0] >= 0 && atlas->ShadowRectIds[1] >= 0 && atlas->ShadowRectIds[2] >= 0);
 
     // Because of the blur, we have to generate the full 3x3 texture here, and then we chop that down to just the 2x2 section we need later.
     // 'size' correspond to the our 3x3 size, whereas 'shadow_tex_size' correspond to our 2x2 version where duplicate mirrored corners are not stored.
     const ImFontAtlasShadowTexConfig* shadow_cfg = &atlas->ShadowTexConfig;
 
     // The rectangular shadow texture
+    auto addUVset = [&](int rectId, ImVec4 RectUvs[10],const auto& alphaTransform) 
     {
         const int size = shadow_cfg->TexCornerSize + shadow_cfg->TexEdgeSize + shadow_cfg->TexCornerSize;
         const int corner_size = shadow_cfg->TexCornerSize;
@@ -4159,7 +4208,7 @@ static void ImFontAtlasBuildRenderShadowTexData(ImFontAtlas* atlas)
         const ImVec2 shadow_rect_max((float)(corner_size + edge_size), (float)(corner_size + edge_size));
 
         // Remove the padding we added
-        ImFontAtlasCustomRect r = atlas->CustomRects[atlas->ShadowRectIds[0]];
+        ImFontAtlasCustomRect r = atlas->CustomRects[atlas->ShadowRectIds[rectId]];
         const int padding = shadow_cfg->GetRectTexPadding();
         r.X += (unsigned short)padding;
         r.Y += (unsigned short)padding;
@@ -4172,9 +4221,7 @@ static void ImFontAtlasBuildRenderShadowTexData(ImFontAtlas* atlas)
         for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
             {
-                float dist = DistanceFromRectangle(ImVec2((float)x, (float)y), shadow_rect_min, shadow_rect_max);
-                float alpha = 1.0f - ImMin(ImMax(dist + shadow_cfg->TexDistanceFieldOffset, 0.0f) / ImMax(shadow_cfg->TexCornerSize + shadow_cfg->TexDistanceFieldOffset, 0.001f), 1.0f);
-                alpha = ImPow(alpha, shadow_cfg->TexFalloffPower);  // Apply power curve to give a nicer falloff
+                float alpha = alphaTransform(ImVec2((float)x, (float)y), shadow_rect_min, shadow_rect_max);
                 tex_data[x + (y * size)] = alpha;
             }
 
@@ -4221,9 +4268,49 @@ static void ImFontAtlasBuildRenderShadowTexData(ImFontAtlas* atlas)
 
             ImVec2 uv0, uv1;
             atlas->CalcCustomRectUV(&sub_rect, &uv0, &uv1);
-            atlas->ShadowRectUvs[i] = ImVec4(flip_h ? uv1.x : uv0.x, flip_v ? uv1.y : uv0.y, flip_h ? uv0.x : uv1.x, flip_v ? uv0.y : uv1.y);
+            RectUvs[i] = ImVec4(flip_h ? uv1.x : uv0.x, flip_v ? uv1.y : uv0.y, flip_h ? uv0.x : uv1.x, flip_v ? uv0.y : uv1.y);
         }
-    }
+    };
+    
+    addUVset(0,atlas->ShadowRectUvs,[&](const ImVec2& sample_pos, const ImVec2& rect_min, const ImVec2& rect_max){
+            float dist = DistanceFromRectangle(sample_pos, rect_min, rect_max);
+            float alpha = 1.0f - ImMin(ImMax(dist + shadow_cfg->TexDistanceFieldOffset, 0.0f) / ImMax(shadow_cfg->TexCornerSize + shadow_cfg->TexDistanceFieldOffset, 0.001f), 1.0f);
+            return ImPow(alpha, shadow_cfg->TexFalloffPower);  // Apply power curve to give a nicer falloff
+        });
+
+    addUVset(2,atlas->InShdwRectUvs,[&](const ImVec2& sample_pos, const ImVec2& /*rect_min*/, const ImVec2& /*rect_max*/){
+
+            // this function computes how much of a unit circle is unobscured by enclosed border of infinite width - aproximation of shadow
+            float distX = ImMin(sample_pos.x/shadow_cfg->TexCornerSize,1.0f);
+            float distY = ImMin(sample_pos.y/shadow_cfg->TexCornerSize,1.0f);
+            float angleX = acos(distX);
+            float angleY = acos(distY);
+
+            auto factor = [](float dist) {
+                    return dist * sqrt(1.0f - dist*dist);
+                };
+            float factorX  = factor(distX);
+            float factorY  = factor(distY);
+
+            auto overlap = [&](float angleX, float angleY) {
+                    float angleIntersectionSector = float(angleX + angleY - M_PI_2);
+                    if (angleIntersectionSector < 0.0f) {
+                        return 0.0f;
+                    } else {
+                        float areaIntersectionSector  = angleIntersectionSector / 2.0f; // pi * r^2 * angle/2pi , with r=1
+                        float areaXTri = 0.5f * factorX;
+                        float areaYTri = 0.5f * factorY;
+                        float areaRect = distX * distY;
+                        return areaIntersectionSector - areaXTri - areaYTri + areaRect;
+                    }
+                };
+
+            float areaXSegment = angleX - factorX;
+            float areaYSegment = angleY - factorY;
+            float areaTotal    = areaXSegment + areaYSegment - overlap(angleX,angleY);
+            return float(areaTotal * M_1_PI); // normalize area
+        });
+
 
     // The convex shape shadow texture
     {
@@ -4281,6 +4368,7 @@ static void ImFontAtlasBuildRenderShadowTexData(ImFontAtlas* atlas)
         ImVec2 uv0, uv1;
         atlas->CalcCustomRectUV(&r, &uv0, &uv1);
         atlas->ShadowRectUvs[9] = ImVec4(uv0.x, uv0.y, uv1.x, uv1.y);
+        atlas->InShdwRectUvs[9] = ImVec4(uv0.x, uv0.y, uv0.x, uv0.y);
     }
 }
 

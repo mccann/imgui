@@ -801,6 +801,7 @@ struct IMGUI_API ImDrawListSharedData
 
     int*            ShadowRectIds;              // IDs of rects for shadow texture (2 entries)
     const ImVec4*   ShadowRectUvs;              // UV coordinates for shadow texture (10 entries)
+    const ImVec4*   InShdwRectUvs;              // UV coordinates for shadow texture (10 entries)
 
     ImDrawListSharedData();
     void SetCircleTessellationMaxError(float max_error);
