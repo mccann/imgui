@@ -9029,6 +9029,7 @@ void ImGui::UpdateCurrentFontSize(float restore_font_size_after_scaling)
         ImFontAtlas* atlas = g.Font->OwnerAtlas;
         g.DrawListSharedData.ShadowRectIds = &atlas->ShadowRectIds[0];
         g.DrawListSharedData.ShadowRectUvs = &atlas->ShadowRectUvs[0];
+        g.DrawListSharedData.InShdwRectUvs = &atlas->InShdwRectUvs[0];
     }
 }
 
